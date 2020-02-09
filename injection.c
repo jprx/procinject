@@ -3,7 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-const char sequence_to_detect[100] = "\x55\x48\x89\xe5\x48\x83\xec\x10\xc7\x45\xfc";
+#include <funchook.h>
+
+const char sequence_to_detect[100] = "\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x5d";
 
 typedef struct page_entry_t {
 	char *start, *end;
@@ -134,6 +136,7 @@ void* scan_for_signature (unsigned long library_hash, u_int32_t page_offset) {
 							if (found_it_yet) {
 								fprintf(stdout, "[injector.so] Jumping to found sequence\n");
 								fp();
+								return (void*)fp;
 							}
 
 							found_it_yet = 1;
@@ -147,9 +150,32 @@ void* scan_for_signature (unsigned long library_hash, u_int32_t page_offset) {
 	}
 }
 
+typedef int (*hook_fn_ptr_t)(int a);
+static hook_fn_ptr_t hook_ptr;
+
+int hooked_findme2 (int a) {
+	fprintf(stdout, "Hooked: a is %d\n", a);
+	return 420;
+}
+
+int hook_fn(void *func_to_hook) {
+	funchook_t *f = funchook_create();
+	hook_ptr = (hook_fn_ptr_t)func_to_hook;
+	if (0 != funchook_prepare(f, (void**)&(hook_ptr), hooked_findme2)) {
+		fprintf(stdout, "[injector.so] Error hooking function\n");
+	}
+	funchook_install(f,0);
+}
+
 int puts (const char* c) {
+	void* found_fn = NULL;
 	fprintf(stdout, "[injector.so] Injected into host process\n");
 	scan_pages();
 	//print_pages();
-	scan_for_signature(7570041587002597, 0x6ca); // 0x425
+	found_fn = scan_for_signature(7570041587002597, 0x74a);
+
+	if (found_fn) {
+		fprintf(stdout, "[injector.so] Hooking found sequence...\n");
+		hook_fn(found_fn);
+	}
 }

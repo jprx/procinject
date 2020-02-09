@@ -8,7 +8,12 @@ int find_me_you_wont (void) {
 	}
 }
 
+int findme2 (int a) {
+	return a;
+}
+
 int main () {
 	puts("Hey kids");
+	printf("findme2 says: %d\n", findme2(69));
 	return 0;
 }
