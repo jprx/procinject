@@ -131,10 +131,10 @@ void* scan_for_signature (unsigned long library_hash, u_int32_t page_offset) {
 						// Ensure this is the exact match by checking the static bits of virtual address
 						// This is because there may be false positives that have similar signatures
 						if (!(((int)addr & 0x0FFF) ^ page_offset)) {
-							fprintf(stdout, "[injector.so] Found sequence at %p in page %p\n", addr, cur_page->start);
+							//fprintf(stdout, "[injector.so] Found sequence at %p in page %p\n", addr, cur_page->start);
 							find_this_func fp = (find_this_func)addr;
 							if (found_it_yet) {
-								fprintf(stdout, "[injector.so] Jumping to found sequence\n");
+								//fprintf(stdout, "[injector.so] Jumping to found sequence\n");
 								fp();
 								return (void*)fp;
 							}
@@ -154,7 +154,8 @@ typedef int (*hook_fn_ptr_t)(int a);
 static hook_fn_ptr_t hook_ptr;
 
 int hooked_findme2 (int a) {
-	fprintf(stdout, "Hooked: a is %d\n", a);
+	//fprintf(stdout, "Hooked: a is %d\n", a);
+	//fprintf(stdout, "\nHahaha I hijacked your 'findme' function\n");
 	return 420;
 }
 
@@ -163,19 +164,21 @@ int hook_fn(void *func_to_hook) {
 	hook_ptr = (hook_fn_ptr_t)func_to_hook;
 	if (0 != funchook_prepare(f, (void**)&(hook_ptr), hooked_findme2)) {
 		fprintf(stdout, "[injector.so] Error hooking function\n");
+		return 0;
 	}
 	funchook_install(f,0);
+	fprintf(stdout, "Hahaha I hijacked your 'findme' function\n");
 }
 
 int puts (const char* c) {
 	void* found_fn = NULL;
-	fprintf(stdout, "[injector.so] Injected into host process\n");
+	//fprintf(stdout, "[injector.so] Injected into host process\n");
 	scan_pages();
 	//print_pages();
 	found_fn = scan_for_signature(7570041587002597, 0x74a);
 
 	if (found_fn) {
-		fprintf(stdout, "[injector.so] Hooking found sequence...\n");
+		//fprintf(stdout, "[injector.so] Hooking found sequence...\n");
 		hook_fn(found_fn);
 	}
 }
