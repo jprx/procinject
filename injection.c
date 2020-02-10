@@ -13,7 +13,7 @@ const char sequence_to_detect[100] = "\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x
 
 // Offset of the sequence into the binary:
 // (Only lower 12 bits are used in scanning assuming 4kb page sizes)
-#define SEQUENCE_OFFSET 0x74a
+#define SEQUENCE_OFFSET 0x68a
 
 // The name of the binary to which the pages to be search belongs
 #define BINARY_NAME "/target"
