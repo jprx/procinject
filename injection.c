@@ -18,11 +18,19 @@ const char sequence_to_detect[100] = "\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x
 // The name of the binary to which the pages to be search belongs
 #define BINARY_NAME "/target"
 
+// Permission vector
+#define PERM_R (1 << 0)
+#define PERM_W (1 << 1)
+#define PERM_X (1 << 2)
+#define PERM_P (1 << 3)
+
 // Page table entry data structure- keep a list of these
 typedef struct page_entry_t {
 	char *start, *end;
 	unsigned long name_hash;
 	struct page_entry_t *next;
+	uint8_t perm_vector;
+	uint8_t is_exec;	// Is this PTE executable?
 } page_entry;
 
 // Linked list of known page entries
@@ -62,6 +70,8 @@ page_entry *create_page_entry(char *s, char *e, unsigned long h) {
 		p->end = e;
 		p->name_hash = h;
 		p->next = NULL;
+		p->perm_vector = 0;
+		p->is_exec = 0;
 
 		// Insert into list:
 		p->next = found_pages;
@@ -73,6 +83,16 @@ page_entry *create_page_entry(char *s, char *e, unsigned long h) {
 // Destroy a page_entry
 void destroy_page_entry (page_entry *p) {
 	free(p);
+}
+
+// Set permission bits of a page table entry
+void save_page_perms (page_entry *pe, uint8_t r, uint8_t w, uint8_t x, uint8_t p) {
+	if (!pe) return;
+	pe->perm_vector |= (r == 'r') ? PERM_R : 0;
+	pe->perm_vector |= (w == 'w') ? PERM_W : 0;
+	pe->perm_vector |= (x == 'x') ? PERM_X : 0;
+	pe->perm_vector |= (p == 'p') ? PERM_P : 0;
+	pe->is_exec = (pe->perm_vector & PERM_X) != 0;
 }
 
 // Pretty-print all pages we found from last scan
@@ -90,12 +110,13 @@ int scan_pages(void) {
 	char buf[2048];
 	char *start_addr, *fin_addr;
 	int count = 0;
+	char perm_w, perm_r, perm_x, perm_p;
 
 	fd = fopen("/proc/self/maps", "r");
 	if (!fd) {return -1;}
 	
 	// Scan allocated pages & store in list
-	while (fscanf(fd, "%p-%p", &start_addr, &fin_addr)) {
+	while (fscanf(fd, "%p-%p %c%c%c%c", &start_addr, &fin_addr, &perm_r, &perm_w, &perm_x, &perm_p)) {
 		// Scan to end of line:
 		if (!fgets(buf,sizeof(buf),fd)) {break;}
 
@@ -111,6 +132,7 @@ int scan_pages(void) {
 
 		// Store pages into database:
 		page_entry *new_page = create_page_entry(start_addr, fin_addr, name_hash);
+		save_page_perms(new_page, perm_r, perm_w, perm_x, perm_p);
 		count++;
 	}
 	return count;
@@ -119,7 +141,6 @@ int scan_pages(void) {
 // library_hash: djb2 hash of the name of the library to scan for
 // page_offset: offset of the method within the page (4 kB pages) to find
 void* scan_for_signature (unsigned long library_hash, u_int32_t page_offset) {
-	static int found_it_yet = 0;
 	// Scan for pattern in all pages mapping to desired process binary name hash
 	page_entry *cur_page = found_pages;
 	unsigned long target_hash = library_hash;
@@ -143,10 +164,10 @@ void* scan_for_signature (unsigned long library_hash, u_int32_t page_offset) {
 					if (!(((uintptr_t)addr & 0x0FFF) ^ page_offset)) {
 						void *fp = (void*)addr;
 
-						// This is a hack to deal with non-executable pages
-						// Will fix this by reading rwx bits of page table entry before scan
-						if (found_it_yet) return (void*)fp;
-						found_it_yet = 1;
+						// Only return pointer if the page is executable
+						// Copies of binary will contain the same signature in non-exec memory
+						// We don't care about those though
+						if (cur_page->is_exec) return (void*)fp;
 					}
 				}
 			}
