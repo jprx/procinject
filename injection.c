@@ -5,18 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h> // For uintptr_t
-
 #include <funchook.h>
 
-// First few bytes of a target structure:
-const char sequence_to_detect[100] = "\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x5d";
-
-// Offset of the sequence into the binary:
-// (Only lower 12 bits are used in scanning assuming 4kb page sizes)
-#define SEQUENCE_OFFSET 0x68a
-
-// The name of the binary to which the pages to be search belongs
-#define BINARY_NAME "/target"
+#include "injection.h"
+#include "userpref.h"
 
 // Permission vector
 #define PERM_R (1 << 0)
@@ -24,17 +16,8 @@ const char sequence_to_detect[100] = "\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x
 #define PERM_X (1 << 2)
 #define PERM_P (1 << 3)
 
-// Page table entry data structure- keep a list of these
-typedef struct page_entry_t {
-	char *start, *end;
-	unsigned long name_hash;
-	struct page_entry_t *next;
-	uint8_t perm_vector;
-	uint8_t is_exec;	// Is this PTE executable?
-} page_entry;
-
 // Linked list of known page entries
-page_entry *found_pages = NULL;
+static page_entry *found_pages = NULL;
 
 // Strip path down to last substring after & including final '/'
 // Returns pointer to original string if no '/' found
@@ -104,6 +87,7 @@ void print_pages(void) {
 	}
 }
 
+// Scan pages & create list of definitions
 int scan_pages(void) {
 	FILE *fd;
 	// Hopefully /proc/self/maps doesn't give more than 2048 bytes/line
@@ -176,14 +160,8 @@ void* scan_for_signature (unsigned long library_hash, u_int32_t page_offset) {
 	}
 }
 
-// Temporary defs for demo purposes
-typedef int (*hook_fn_ptr_t)(int a);
+// Hook pointer (used for trampoline, will point to original def)
 static hook_fn_ptr_t hook_ptr;
-
-// Hooked version of 'findme' in target demo
-int hooked_findme2 (int a) {
-	return 420;
-}
 
 // Hook a target function using libfunchook
 int hook_fn(void *func_to_hook, void* hook_handler) {
@@ -219,9 +197,4 @@ void inject (unsigned long binary_name_hash, const char* sequence, uint32_t page
 	scan_pages();
 	found_fn = scan_for_signature(binary_name_hash, page_offset);
 	if (found_fn) hook_fn(found_fn, hook_handler);
-}
-
-// Overridden puts definition
-int puts (const char* c) {
-	inject(djb2_hash(BINARY_NAME), sequence_to_detect, SEQUENCE_OFFSET, hooked_findme2);
 }
